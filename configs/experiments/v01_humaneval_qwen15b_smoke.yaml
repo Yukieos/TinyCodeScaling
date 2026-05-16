@@ -1,0 +1,12 @@
+# Smoke experiment for fast local validation.
+# Safe to keep in the repo as a debugging shortcut, and also safe to delete
+# later if you do not want a dedicated 1-task verification config.
+experiment_name: qwen15b_humaneval_greedy_smoke
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus_smoke.yaml
+seeds: [11]
+strategy:
+  name: greedy
+  temperature: 0.0
+  n: 1
+results_root: results

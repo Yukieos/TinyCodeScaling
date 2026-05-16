@@ -1,0 +1,14 @@
+# Smoke config means "smallest useful end-to-end check".
+# This variant intentionally runs only 1 task so you can quickly verify
+# generation, extraction, and strategy output wiring without paying for a
+# full HumanEval+ run. Official EvalPlus scoring is still most reliable on
+# full-coverage sample files.
+benchmark: humaneval_plus
+dataset: humaneval
+split: test
+max_tasks: 1
+timeout_seconds: 5
+use_evalplus: true
+extraction_backend: evalplus
+evaluator_backend: evalplus
+parallel: null

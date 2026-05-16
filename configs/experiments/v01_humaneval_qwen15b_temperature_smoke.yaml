@@ -1,0 +1,12 @@
+# Smoke experiment for validating temperature-based multi-sample generation.
+# This still uses 1 HumanEval task, but requests multiple candidates so you can
+# inspect the new strategy result schema before running larger experiments.
+experiment_name: qwen15b_humaneval_temperature_smoke
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus_smoke.yaml
+seeds: [11]
+strategy:
+  name: temperature
+  temperature: 0.8
+  n: 4
+results_root: results

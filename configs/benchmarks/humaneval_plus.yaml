@@ -1,0 +1,9 @@
+benchmark: humaneval_plus
+dataset: humaneval
+split: test
+max_tasks: null
+timeout_seconds: 5
+use_evalplus: true
+extraction_backend: evalplus
+evaluator_backend: evalplus
+parallel: null

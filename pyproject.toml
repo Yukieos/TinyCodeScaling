@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinycodescaling"
+version = "0.1.0"
+description = "A reproducible benchmark for small code LLM inference-time scaling."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {file = "LICENSE"}
+authors = [
+  {name = "TinyCodeScaling Authors"},
+]
+dependencies = [
+  "PyYAML>=6.0,<7.0",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "License :: OSI Approved :: Apache Software License",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+runtime = [
+  "transformers>=4.37.0",
+  "vllm>=0.6.0",
+  "evalplus[vllm] @ git+https://github.com/evalplus/evalplus",
+]
+
+[project.scripts]
+tinycodescaling = "tinycodescaling.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["tinycodescaling*"]
+

@@ -1,0 +1,10 @@
+# Full HumanEval+ run for public-test-based selection over 8 candidates.
+experiment_name: qwen15b_humaneval_publictest8_v01
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11, 12, 13]
+strategy:
+  name: public_test_selection
+  temperature: 0.8
+  n: 8
+results_root: results

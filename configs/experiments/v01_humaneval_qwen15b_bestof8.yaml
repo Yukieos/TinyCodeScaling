@@ -1,0 +1,10 @@
+# Full HumanEval+ run for the best-of-8 random-pick baseline.
+experiment_name: qwen15b_humaneval_bestof8_v01
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11, 12, 13]
+strategy:
+  name: best_of_n_random
+  temperature: 0.8
+  n: 8
+results_root: results

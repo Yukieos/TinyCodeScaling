@@ -1,0 +1,10 @@
+experiment_name: qwen15b_humaneval_greedy_smoke
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11]
+strategy:
+  name: greedy
+  temperature: 0.0
+  n: 1
+results_root: results
+

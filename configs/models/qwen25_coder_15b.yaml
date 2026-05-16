@@ -1,0 +1,11 @@
+# Historical filename kept to match experiment naming. This file targets Qwen2.5-Coder-1.5B-Instruct.
+model_name: Qwen/Qwen2.5-Coder-1.5B-Instruct
+backend: vllm
+dtype: bfloat16
+max_new_tokens: 512
+max_model_len: 4096
+gpu_memory_utilization: 0.9
+batch_size: 16
+system_prompt: You are a helpful coding assistant.
+use_chat_template: true
+
