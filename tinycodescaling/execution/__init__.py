@@ -6,7 +6,17 @@ from tinycodescaling.execution.code_extract import (
     extract_code,
     extract_python_solution,
 )
-from tinycodescaling.execution.sandbox import SandboxResult, run_in_sandbox, run_test_cases_in_sandbox
+from tinycodescaling.execution.sandbox import (
+    SandboxResult,
+    run_assertions_in_sandbox,
+    run_in_sandbox,
+    run_test_cases_in_sandbox,
+)
+from tinycodescaling.execution.test_extract import (
+    GeneratedTestExtractionResult,
+    extract_markdown_code_block,
+    extract_test_assertions,
+)
 from tinycodescaling.execution.test_runner import (
     PublicTestCase,
     count_passing_public_tests,
@@ -15,6 +25,7 @@ from tinycodescaling.execution.test_runner import (
 )
 
 __all__ = [
+    "GeneratedTestExtractionResult",
     "SandboxResult",
     "PublicTestCase",
     "build_benchmark_sample",
@@ -22,7 +33,10 @@ __all__ = [
     "count_passing_public_tests",
     "extract_code",
     "extract_doctests_from_prompt",
+    "extract_markdown_code_block",
     "extract_python_solution",
+    "extract_test_assertions",
+    "run_assertions_in_sandbox",
     "run_in_sandbox",
     "run_test_cases_in_sandbox",
     "run_tests",

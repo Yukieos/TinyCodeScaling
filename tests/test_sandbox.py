@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 import unittest
 
-from tinycodescaling.execution.sandbox import run_in_sandbox
+from tinycodescaling.execution.sandbox import run_assertions_in_sandbox, run_in_sandbox
 
 
 HAS_EVALPLUS = importlib.util.find_spec("evalplus") is not None
@@ -72,6 +72,17 @@ class SandboxTests(unittest.TestCase):
             maximum_memory_bytes=128 * 1024 * 1024,
         )
         self.assertIn(result.status, {"memory_error", "runtime_error"})
+
+    def test_run_assertions_in_sandbox_returns_per_assertion_results(self):
+        result = run_assertions_in_sandbox(
+            code="def f(x):\n    return x + 1\n",
+            assertions=["assert f(1) == 2", "assert f(2) == 4"],
+            timeout_seconds=1.0,
+            per_assertion_timeout_seconds=0.5,
+        )
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.details["assertion_results"], [True, False])
 
 
 if __name__ == "__main__":

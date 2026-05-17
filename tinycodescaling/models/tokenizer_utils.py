@@ -33,12 +33,16 @@ class ChatPromptFormatter:
     def format_problem_prompt(self, problem_prompt: str) -> str:
         """Convert one benchmark problem into the exact string sent to the model."""
         user_prompt = render_user_prompt(problem_prompt)
+        return self.format_user_text(user_prompt)
+
+    def format_user_text(self, user_text: str) -> str:
+        """Wrap arbitrary user text in the same chat-template path as benchmark prompts."""
         if not self.use_chat_template:
-            return user_prompt
+            return user_text
 
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user_prompt},
+            {"role": "user", "content": user_text},
         ]
         return self.tokenizer.apply_chat_template(
             messages,

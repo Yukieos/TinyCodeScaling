@@ -1,7 +1,11 @@
 import math
 import unittest
 
-from tinycodescaling.metrics.aggregate import aggregate_seed_summaries, derive_metrics_from_candidate_results
+from tinycodescaling.metrics.aggregate import (
+    aggregate_seed_summaries,
+    derive_metrics_from_candidate_results,
+    derive_selection_audit_metrics,
+)
 
 
 class AggregateTests(unittest.TestCase):
@@ -66,6 +70,43 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(metrics["oracle_pass_at_n_plus"], 0.5)
         self.assertEqual(metrics["public_test_discrimination_rate"], 1.0)
         self.assertEqual(metrics["public_test_fallback_rate"], 0.5)
+
+    def test_derive_selection_audit_metrics_summarizes_generated_test_quality(self):
+        records = [
+            {
+                "strategy_selection_metadata": {
+                    "selection_method": "generated_test_pass_count",
+                    "generated_test_parse_method": "ast_assert_walk",
+                    "generated_test_entry_point_leak_detected": False,
+                    "generated_test_fallback_used": False,
+                    "generated_test_discriminative": True,
+                    "generated_test_canonical_pass_rate": 1.0,
+                    "n_valid_generated_tests": 5,
+                }
+            },
+            {
+                "strategy_selection_metadata": {
+                    "selection_method": "first_candidate_fallback",
+                    "generated_test_parse_method": "parse_error",
+                    "generated_test_entry_point_leak_detected": True,
+                    "generated_test_fallback_used": True,
+                    "generated_test_discriminative": False,
+                    "generated_test_canonical_pass_rate": 0.5,
+                    "n_valid_generated_tests": 0,
+                    "tie_breaker_used": "cumulative_logprob",
+                }
+            },
+        ]
+
+        metrics = derive_selection_audit_metrics(records)
+
+        self.assertEqual(metrics["generated_test_parse_failure_rate"], 0.5)
+        self.assertEqual(metrics["generated_test_entry_point_leak_rate"], 0.5)
+        self.assertEqual(metrics["generated_test_fallback_rate"], 0.5)
+        self.assertEqual(metrics["generated_test_discrimination_rate"], 0.5)
+        self.assertEqual(metrics["generated_test_valid_tests_per_task"], 2.5)
+        self.assertEqual(metrics["generated_test_tie_rate"], 0.5)
+        self.assertEqual(metrics["generated_test_canonical_pass_rate"], 0.75)
 
 
 if __name__ == "__main__":

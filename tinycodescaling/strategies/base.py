@@ -59,10 +59,12 @@ class StrategyConfig:
         """Parse known strategy keys and preserve unknown ones for future strategies."""
         known_keys = {"name", "n", "temperature"}
         data = dict(payload)
+        sample_count = data.get("n", data.get("n_solutions", 1))
+        temperature = data.get("temperature", data.get("temperature_solutions", 0.0))
         return cls(
             name=str(data["name"]),
-            n=int(data.get("n", 1)),
-            temperature=float(data.get("temperature", 0.0)),
+            n=int(sample_count),
+            temperature=float(temperature),
             extra={key: value for key, value in data.items() if key not in known_keys},
         )
 
@@ -88,6 +90,7 @@ class Strategy(ABC):
         task: CodeTask,
         prompt: str,
         runner: Any,
+        formatter: Any,
         config: StrategyConfig,
         benchmark_name: str,
         extraction_backend: str,
@@ -100,6 +103,7 @@ class Strategy(ABC):
         tasks: Sequence[CodeTask],
         prompts: Sequence[str],
         runner: Any,
+        formatter: Any,
         config: StrategyConfig,
         benchmark_name: str,
         extraction_backend: str,
@@ -111,6 +115,7 @@ class Strategy(ABC):
                 task=task,
                 prompt=prompt,
                 runner=runner,
+                formatter=formatter,
                 config=config,
                 benchmark_name=benchmark_name,
                 extraction_backend=extraction_backend,
@@ -189,6 +194,8 @@ class Strategy(ABC):
         strategy_config: StrategyConfig,
         selection_metadata: dict[str, Any] | None = None,
         total_latency_seconds: float | None = None,
+        prompt_tokens: int | None = None,
+        total_completion_tokens: int | None = None,
     ) -> StrategyResult:
         """Assemble a StrategyResult with consistent token and selection accounting."""
         if not candidates:
@@ -200,8 +207,12 @@ class Strategy(ABC):
             selected_code=selected_candidate.code,
             selected_index=selected_index,
             candidates=list(candidates),
-            prompt_tokens=candidates[0].prompt_tokens,
-            total_completion_tokens=sum(candidate.completion_tokens for candidate in candidates),
+            prompt_tokens=candidates[0].prompt_tokens if prompt_tokens is None else prompt_tokens,
+            total_completion_tokens=(
+                sum(candidate.completion_tokens for candidate in candidates)
+                if total_completion_tokens is None
+                else total_completion_tokens
+            ),
             total_latency_seconds=(
                 selected_candidate.latency_seconds
                 if total_latency_seconds is None

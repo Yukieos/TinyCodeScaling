@@ -24,8 +24,14 @@ from tinycodescaling.metrics.aggregate import (
 from tinycodescaling.models.tokenizer_utils import ChatPromptFormatter
 from tinycodescaling.models.vllm_runner import VLLMRunner
 from tinycodescaling.reports.markdown import build_markdown_report
+from tinycodescaling.reports.pareto import (
+    build_pareto_dataset,
+    load_summary_files,
+    write_pareto_artifacts,
+)
 from tinycodescaling.strategies import (
     BestOfNRandomPick,
+    GeneratedTestSelectionStrategy,
     GreedyStrategy,
     PublicTestSelectionStrategy,
     TemperatureSamplingStrategy,
@@ -54,12 +60,63 @@ def main(argv: list[str] | None = None) -> None:
     report_parser.add_argument("--run-dir", help="Directory containing summary.json.")
     report_parser.add_argument("--results", help="Path to a raw JSONL file; used to infer summary.")
 
+    pareto_parser = subparsers.add_parser("pareto", help="Build a Pareto plot from summary files.")
+    pareto_parser.add_argument(
+        "--summary",
+        dest="summaries",
+        action="append",
+        help="Path to one summary JSON file. Repeat to compare multiple runs.",
+    )
+    pareto_parser.add_argument(
+        "--run-dir",
+        dest="run_dirs",
+        action="append",
+        help="Directory containing one or more *.summary.json files. Repeat as needed.",
+    )
+    pareto_parser.add_argument("--output", required=True, help="Output SVG path.")
+    pareto_parser.add_argument(
+        "--title",
+        default="TinyCodeScaling Pareto Frontier",
+        help="Chart title written into the SVG and companion JSON.",
+    )
+    pareto_parser.add_argument(
+        "--x-metric",
+        default="completion_tokens_per_problem",
+        choices=[
+            "completion_tokens_per_problem",
+            "total_tokens_per_problem",
+            "tokens_per_solved_plus",
+        ],
+        help="Cost metric for the x-axis.",
+    )
+    pareto_parser.add_argument(
+        "--y-metric",
+        default="pass_at_1_plus",
+        choices=["pass_at_1_plus", "pass_at_1_base"],
+        help="Quality metric for the y-axis.",
+    )
+    pareto_parser.add_argument(
+        "--linear-x",
+        action="store_true",
+        help="Use a linear x-axis instead of the default log scale.",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "run":
         run_experiment(Path(args.config))
         return
     if args.command == "report":
         render_report(summary_path=_resolve_summary_path(args))
+        return
+    if args.command == "pareto":
+        render_pareto(
+            summary_paths=_resolve_pareto_summary_paths(args),
+            output_path=Path(args.output),
+            title=args.title,
+            x_metric=args.x_metric,
+            y_metric=args.y_metric,
+            log_scale_x=not args.linear_x,
+        )
         return
 
 
@@ -178,6 +235,27 @@ def render_report(summary_path: Path) -> None:
     print(report_text)
 
 
+def render_pareto(
+    summary_paths: list[Path],
+    output_path: Path,
+    title: str,
+    x_metric: str,
+    y_metric: str,
+    log_scale_x: bool,
+) -> None:
+    """Load summaries, build a Pareto dataset, and write plot artifacts to disk."""
+    summaries = load_summary_files(summary_paths)
+    points = build_pareto_dataset(summaries, x_metric=x_metric, y_metric=y_metric)
+    svg_path, dataset_path = write_pareto_artifacts(
+        points,
+        output_path=output_path,
+        title=title,
+        log_scale_x=log_scale_x,
+    )
+    print(f"Pareto plot: {svg_path}")
+    print(f"Pareto dataset: {dataset_path}")
+
+
 def _run_seed(
     seed: int,
     tasks: list[CodeTask],
@@ -201,6 +279,7 @@ def _run_seed(
             tasks=batch,
             prompts=prompts,
             runner=runner,
+            formatter=formatter,
             config=strategy_config,
             benchmark_name=benchmark_name,
             extraction_backend=extraction_backend,
@@ -317,6 +396,8 @@ def _build_strategy(name: str) -> Strategy:
         return BestOfNRandomPick()
     if name == "public_test_selection":
         return PublicTestSelectionStrategy()
+    if name == "generated_test_selection":
+        return GeneratedTestSelectionStrategy()
     raise ValueError(f"Unsupported strategy: {name}")
 
 
@@ -379,6 +460,26 @@ def _resolve_summary_path(args: argparse.Namespace) -> Path:
             return inferred
         raise FileNotFoundError(f"Could not infer summary file from raw results: {raw_path}")
     raise ValueError("One of --summary, --run-dir, or --results is required.")
+
+
+def _resolve_pareto_summary_paths(args: argparse.Namespace) -> list[Path]:
+    """Resolve a unique ordered list of summary JSON paths for Pareto rendering."""
+    summary_paths: list[Path] = []
+    for summary in args.summaries or ():
+        summary_paths.append(Path(summary))
+    for run_dir in args.run_dirs or ():
+        summary_paths.extend(sorted(Path(run_dir).glob("*.summary.json")))
+    ordered_unique: list[Path] = []
+    seen: set[Path] = set()
+    for path in summary_paths:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        ordered_unique.append(resolved)
+    if not ordered_unique:
+        raise ValueError("At least one --summary or --run-dir is required for pareto.")
+    return ordered_unique
 
 
 def _load_yaml(path: Path) -> dict:

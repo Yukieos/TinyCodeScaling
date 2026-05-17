@@ -6,4 +6,6 @@
 - Per-prompt latency is batch-apportioned wall-clock latency.
 - HumanEval prompt doctests only exist for a subset of tasks, so public-test selection can fall back to first-candidate selection on many problems.
 - The local sandbox follows EvalPlus-style guards, but it is still a pragmatic benchmark sandbox rather than a hardened OS-level isolation boundary.
-- LiveCodeBench, MBPP+, generated-test selection, and Pareto plots are not yet wired in.
+- Generated-test selection now depends on a stricter output format request, but small models can still emit malformed or low-quality tests.
+- Canonical pass rate is an analysis-time quality proxy for generated tests, not a deployable signal.
+- LiveCodeBench and MBPP+ are still not wired end-to-end.

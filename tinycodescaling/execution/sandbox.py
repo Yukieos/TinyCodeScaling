@@ -132,6 +132,65 @@ def run_test_cases_in_sandbox(
     return SandboxResult(**result)
 
 
+def run_assertions_in_sandbox(
+    code: str,
+    assertions: Sequence[str],
+    timeout_seconds: float = 5.0,
+    per_assertion_timeout_seconds: float = 1.0,
+    maximum_memory_bytes: int | None = 512 * 1024 * 1024,
+) -> SandboxResult:
+    """Execute one code snippet against multiple standalone assert statements."""
+    if _looks_like_memory_bomb(code) or any(_looks_like_memory_bomb(assertion) for assertion in assertions):
+        return SandboxResult(
+            passed=False,
+            status="memory_error",
+            error_type="MemoryError",
+            error_message="blocked likely memory-exhausting expression before execution.",
+            details={"assertion_results": [False for _ in assertions]},
+        )
+
+    context = multiprocessing.get_context("spawn")
+    queue = context.Queue()
+    process = context.Process(
+        target=_sandbox_assertion_worker,
+        args=(
+            queue,
+            code,
+            list(assertions),
+            per_assertion_timeout_seconds,
+            maximum_memory_bytes,
+        ),
+    )
+    process.start()
+    process.join(timeout_seconds + 1.0)
+    if process.is_alive():
+        process.terminate()
+        process.join(0.1)
+    if process.is_alive():
+        process.kill()
+        process.join(0.1)
+    if process.is_alive() or process.exitcode is None:
+        return SandboxResult(
+            passed=False,
+            status="timeout",
+            error_type="TimeoutError",
+            error_message=f"Timed out after {timeout_seconds} seconds.",
+            details={"assertion_results": [False for _ in assertions]},
+        )
+
+    if process.exitcode != 0 and queue.empty():
+        return SandboxResult(
+            passed=False,
+            status="runtime_error",
+            error_type="ProcessExitError",
+            error_message=f"Sandbox subprocess exited with code {process.exitcode}.",
+            details={"assertion_results": [False for _ in assertions]},
+        )
+
+    result = queue.get()
+    return SandboxResult(**result)
+
+
 def _sandbox_code_worker(
     queue: multiprocessing.Queue,
     code: str,
@@ -212,6 +271,57 @@ def _sandbox_test_case_worker(
                     "passed": all(case_results),
                     "status": "pass" if all(case_results) else "fail",
                     "details": {"case_results": case_results},
+                }
+            )
+        finally:
+            shutil.rmtree = rmtree
+            os.rmdir = rmdir
+            os.chdir = chdir
+
+
+def _sandbox_assertion_worker(
+    queue: multiprocessing.Queue,
+    code: str,
+    assertions: list[str],
+    per_assertion_timeout_seconds: float,
+    maximum_memory_bytes: int | None,
+) -> None:
+    """Run multiple assert statements against one candidate in one isolated subprocess."""
+    create_tempdir, _, swallow_io, time_limit = _load_evalplus_sandbox_utils()
+    with create_tempdir():
+        import os
+        import shutil
+
+        rmtree = shutil.rmtree
+        rmdir = os.rmdir
+        chdir = os.chdir
+        _apply_sandbox_guards(maximum_memory_bytes)
+        exec_globals: dict[str, Any] = {"__builtins__": builtins.__dict__}
+        assertion_results: list[bool] = []
+        try:
+            with swallow_io():
+                exec(code, exec_globals)
+            for assertion in assertions:
+                try:
+                    with time_limit(per_assertion_timeout_seconds):
+                        with swallow_io():
+                            exec(assertion, exec_globals)
+                    assertion_results.append(True)
+                except BaseException:  # noqa: BLE001
+                    assertion_results.append(False)
+        except BaseException as exc:  # noqa: BLE001
+            queue.put(
+                {
+                    **_exception_to_result(exc),
+                    "details": {"assertion_results": [False for _ in assertions]},
+                }
+            )
+        else:
+            queue.put(
+                {
+                    "passed": all(assertion_results),
+                    "status": "pass" if all(assertion_results) else "fail",
+                    "details": {"assertion_results": assertion_results},
                 }
             )
         finally:

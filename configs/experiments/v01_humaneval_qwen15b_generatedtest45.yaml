@@ -1,0 +1,14 @@
+# Full HumanEval+ run for generated-test selection with 4 solutions and 5 tests.
+experiment_name: qwen15b_humaneval_generatedtest45_v01
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11, 12, 13]
+strategy:
+  name: generated_test_selection
+  n_solutions: 4
+  n_tests: 5
+  temperature_solutions: 0.8
+  temperature_tests: 0.3
+  test_max_tokens: 256
+  per_assertion_timeout_seconds: 2.0
+results_root: results

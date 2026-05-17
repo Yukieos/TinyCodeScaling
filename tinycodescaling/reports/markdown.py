@@ -124,4 +124,58 @@ def build_markdown_report(summary: dict) -> str:
                 )
             )
 
+    if "generated_test_valid_tests_per_task" in aggregate:
+        lines.extend(
+            [
+                "",
+                "## Generated Tests",
+                "",
+                "- valid tests per task: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_valid_tests_per_task"]["mean"],
+                        aggregate["generated_test_valid_tests_per_task"]["std"],
+                    )
+                ),
+                "- discrimination rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_discrimination_rate"]["mean"],
+                        aggregate["generated_test_discrimination_rate"]["std"],
+                    )
+                ),
+                "- fallback rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_fallback_rate"]["mean"],
+                        aggregate["generated_test_fallback_rate"]["std"],
+                    )
+                ),
+                "- parse failure rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_parse_failure_rate"]["mean"],
+                        aggregate["generated_test_parse_failure_rate"]["std"],
+                    )
+                ),
+                "- entry-point leak rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_entry_point_leak_rate"]["mean"],
+                        aggregate["generated_test_entry_point_leak_rate"]["std"],
+                    )
+                ),
+                "- tie rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_tie_rate"]["mean"],
+                        aggregate["generated_test_tie_rate"]["std"],
+                    )
+                ),
+            ]
+        )
+        if "generated_test_canonical_pass_rate" in aggregate:
+            lines.append(
+                "- canonical pass rate: `{}`".format(
+                    format_mean_std(
+                        aggregate["generated_test_canonical_pass_rate"]["mean"],
+                        aggregate["generated_test_canonical_pass_rate"]["std"],
+                    )
+                )
+            )
+
     return "\n".join(lines) + "\n"

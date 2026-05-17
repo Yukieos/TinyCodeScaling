@@ -7,6 +7,7 @@ from tinycodescaling.benchmarks.base import CodeTask
 from tinycodescaling.models.vllm_runner import GenerationResult
 from tinycodescaling.strategies.best_of_n import BestOfNRandomPick
 from tinycodescaling.strategies.base import StrategyConfig
+from tinycodescaling.strategies.generated_test_selection import GeneratedTestSelectionStrategy
 from tinycodescaling.strategies.greedy import GreedyStrategy
 from tinycodescaling.strategies.public_test_selection import PublicTestSelectionStrategy
 from tinycodescaling.strategies.temperature import TemperatureSamplingStrategy
@@ -22,6 +23,16 @@ class FakeRunner:
         return self.outputs
 
 
+class FakeSequentialRunner:
+    def __init__(self, outputs_per_call):
+        self.outputs_per_call = list(outputs_per_call)
+        self.calls = []
+
+    def generate(self, prompts, **kwargs):
+        self.calls.append({"prompts": prompts, "kwargs": kwargs})
+        return self.outputs_per_call.pop(0)
+
+
 class StrategyConfigTests(unittest.TestCase):
     def test_from_dict_preserves_extra_fields(self):
         config = StrategyConfig.from_dict(
@@ -33,6 +44,19 @@ class StrategyConfigTests(unittest.TestCase):
         self.assertEqual(config.temperature, 0.8)
         self.assertEqual(config.extra, {"selector": "first"})
         self.assertEqual(config.as_dict()["selector"], "first")
+
+    def test_from_dict_uses_generated_test_solution_count_defaults(self):
+        config = StrategyConfig.from_dict(
+            {
+                "name": "generated_test_selection",
+                "n_solutions": 6,
+                "temperature_solutions": 0.7,
+                "n_tests": 5,
+            }
+        )
+
+        self.assertEqual(config.n, 6)
+        self.assertEqual(config.temperature, 0.7)
 
 
 class GreedyStrategyTests(unittest.TestCase):
@@ -57,6 +81,7 @@ class GreedyStrategyTests(unittest.TestCase):
             task=task,
             prompt="prompt",
             runner=runner,
+            formatter=None,
             config=StrategyConfig.from_dict({"name": "greedy"}),
             benchmark_name="humaneval_plus",
             extraction_backend="raw",
@@ -102,6 +127,7 @@ class TemperatureSamplingStrategyTests(unittest.TestCase):
             task=task,
             prompt="prompt",
             runner=runner,
+            formatter=None,
             config=StrategyConfig.from_dict({"name": "temperature", "n": 2, "temperature": 0.8}),
             benchmark_name="humaneval_plus",
             extraction_backend="raw",
@@ -148,6 +174,7 @@ class BestOfNRandomTests(unittest.TestCase):
             task=task,
             prompt="prompt",
             runner=runner,
+            formatter=None,
             config=StrategyConfig.from_dict(
                 {"name": "best_of_n_random", "n": 2, "temperature": 0.8}
             ),
@@ -199,6 +226,7 @@ class PublicTestSelectionStrategyTests(unittest.TestCase):
             task=task,
             prompt="prompt",
             runner=runner,
+            formatter=None,
             config=StrategyConfig.from_dict(
                 {"name": "public_test_selection", "n": 2, "temperature": 0.8}
             ),
@@ -234,6 +262,7 @@ class PublicTestSelectionStrategyTests(unittest.TestCase):
             task=task,
             prompt="prompt",
             runner=runner,
+            formatter=None,
             config=StrategyConfig.from_dict(
                 {"name": "public_test_selection", "n": 1, "temperature": 0.8}
             ),
@@ -244,6 +273,152 @@ class PublicTestSelectionStrategyTests(unittest.TestCase):
 
         self.assertEqual(result.selected_index, 0)
         self.assertEqual(result.selection_metadata["fallback_reason"], "no_public_tests")
+
+
+class GeneratedTestSelectionStrategyTests(unittest.TestCase):
+    @patch("tinycodescaling.strategies.generated_test_selection.run_assertions_in_sandbox")
+    def test_generated_test_selection_prefers_highest_generated_test_score(
+        self,
+        mock_run_assertions,
+    ):
+        task = CodeTask(
+            task_id="HumanEval/5",
+            prompt='def f(x):\n    """doc"""\n',
+            entry_point="f",
+            canonical_solution="\n    return x + 1\n",
+        )
+        runner = FakeSequentialRunner(
+            outputs_per_call=[
+                [
+                    [
+                        GenerationResult(
+                            text="def f(x):\n    return x\n",
+                            prompt_tokens=10,
+                            completion_tokens=5,
+                            finish_reason="stop",
+                            latency_seconds=0.6,
+                            cumulative_logprob=-2.0,
+                        ),
+                        GenerationResult(
+                            text="def f(x):\n    return x + 1\n",
+                            prompt_tokens=10,
+                            completion_tokens=7,
+                            finish_reason="stop",
+                            latency_seconds=0.6,
+                            cumulative_logprob=-1.0,
+                        ),
+                    ]
+                ],
+                [
+                    [
+                        GenerationResult(
+                            text="```python\nassert f(1) == 2\nassert f(2) == 3\n```",
+                            prompt_tokens=14,
+                            completion_tokens=8,
+                            finish_reason="stop",
+                            latency_seconds=0.4,
+                            cumulative_logprob=-0.5,
+                        )
+                    ]
+                ],
+            ]
+        )
+        mock_run_assertions.side_effect = [
+            type("Result", (), {"details": {"assertion_results": [False, False]}})(),
+            type("Result", (), {"details": {"assertion_results": [True, True]}})(),
+            type("Result", (), {"details": {"assertion_results": [True, True]}})(),
+        ]
+
+        result = GeneratedTestSelectionStrategy().run(
+            task=task,
+            prompt="prompt",
+            runner=runner,
+            formatter=None,
+            config=StrategyConfig.from_dict(
+                {
+                    "name": "generated_test_selection",
+                    "n_solutions": 2,
+                    "n_tests": 2,
+                    "temperature_solutions": 0.8,
+                    "temperature_tests": 0.3,
+                }
+            ),
+            benchmark_name="humaneval_plus",
+            extraction_backend="raw",
+            max_tokens=64,
+        )
+
+        self.assertEqual(result.selected_index, 1)
+        self.assertEqual(result.total_completion_tokens, 20)
+        self.assertEqual(result.prompt_tokens, 24)
+        self.assertEqual(result.selection_metadata["pass_counts"], [0, 2])
+        self.assertEqual(result.selection_metadata["generated_test_canonical_pass_rate"], 1.0)
+        self.assertEqual(result.selection_metadata["n_valid_generated_tests"], 2)
+        self.assertEqual(
+            result.candidates[1].extra["generated_test_assertion_results"],
+            [1, 1],
+        )
+
+    def test_generated_test_selection_falls_back_when_generated_tests_are_invalid(self):
+        task = CodeTask(
+            task_id="HumanEval/6",
+            prompt='def f(x):\n    """doc"""\n',
+            entry_point="f",
+        )
+        runner = FakeSequentialRunner(
+            outputs_per_call=[
+                [
+                    [
+                        GenerationResult(
+                            text="def f(x):\n    return x\n",
+                            prompt_tokens=10,
+                            completion_tokens=5,
+                            finish_reason="stop",
+                            latency_seconds=0.6,
+                            cumulative_logprob=-2.0,
+                        )
+                    ]
+                ],
+                [
+                    [
+                        GenerationResult(
+                            text="def f(x):\n    return x + 1\n",
+                            prompt_tokens=14,
+                            completion_tokens=9,
+                            finish_reason="stop",
+                            latency_seconds=0.4,
+                            cumulative_logprob=-0.5,
+                        )
+                    ]
+                ],
+            ]
+        )
+
+        result = GeneratedTestSelectionStrategy().run(
+            task=task,
+            prompt="prompt",
+            runner=runner,
+            formatter=None,
+            config=StrategyConfig.from_dict(
+                {
+                    "name": "generated_test_selection",
+                    "n_solutions": 1,
+                    "n_tests": 2,
+                    "temperature_solutions": 0.8,
+                    "temperature_tests": 0.3,
+                }
+            ),
+            benchmark_name="humaneval_plus",
+            extraction_backend="raw",
+            max_tokens=64,
+        )
+
+        self.assertEqual(result.selected_index, 0)
+        self.assertTrue(result.selection_metadata["generated_test_fallback_used"])
+        self.assertEqual(
+            result.selection_metadata["generated_test_fallback_reason"],
+            "entry_point_leak_detected",
+        )
 
 
 if __name__ == "__main__":

@@ -59,6 +59,15 @@ That command writes:
 - processed summaries to `results/processed/`
 - markdown reports to `results/reports/`
 
+To compare several finished runs on one internal Pareto chart:
+
+```bash
+python -m tinycodescaling pareto \
+  --summary results/processed/run_a.summary.json \
+  --summary results/processed/run_b.summary.json \
+  --output results/reports/internal_pareto.svg
+```
+
 ## Methods
 
 The CLI currently supports:
@@ -67,6 +76,7 @@ The CLI currently supports:
 - `temperature`
 - `best_of_n_random`
 - `public_test_selection`
+- `generated_test_selection`
 
 All strategies now emit a common result schema with candidate-level metadata so later selection methods and oracle metrics can reuse the same raw artifacts.
 
@@ -75,7 +85,10 @@ Current selection semantics:
 - `greedy`: single deterministic sample
 - `temperature`: stochastic sampling, first candidate selected
 - `best_of_n_random`: `n` stochastic samples, first candidate selected as the no-selection baseline
-- `public_test_selection`: `n` stochastic samples, best public-doctest score selected, with fallback to first candidate when no public tests exist
+- `public_test_selection`: optional `n`-sample baseline that selects by prompt-derived public doctests when available
+- `generated_test_selection`: `n` stochastic samples plus one generated verifier block, selecting by generated-test pass count
+
+Generated-test selection now uses a stricter test-generation prompt that asks for exactly one Python code block containing only top-level `assert` statements. This keeps extraction auditable and makes canonical-pass-rate analysis less noisy.
 
 Evaluation policy:
 
@@ -87,6 +100,7 @@ Important note for later v0.1 comparisons:
 
 - Best-of-N oracle is an upper bound, not a deployable method.
 - HumanEval public-test selection only applies to tasks whose prompt docstring contains doctest examples.
+- Public-test selection is useful as a baseline, but generated-test selection is the more general verifier-style path when authoritative prompt examples are weak or missing.
 
 ## Metrics
 
@@ -106,7 +120,7 @@ Dollar cost is intentionally secondary and should remain an appendix estimate.
 - The current local machine needs a Python 3.10/3.11 runtime to install `vllm`.
 - Per-prompt latency is batch-apportioned wall-clock time, not deployment latency.
 - Official EvalPlus scoring is still intended for full HumanEval+ runs, not partial-task smoke checks.
-- LiveCodeBench, generated-test selection, verifier-style selection, and Pareto plots are not wired in yet.
+- LiveCodeBench is still not wired in yet.
 
 ## Acknowledgement
 

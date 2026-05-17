@@ -55,6 +55,7 @@ def summarize_seed_records(
         ),
     }
     summary.update(derived_metrics)
+    summary.update(derive_selection_audit_metrics(records))
     return summary
 
 
@@ -81,6 +82,13 @@ def aggregate_seed_summaries(seed_summaries: list[dict]) -> dict[str, dict[str, 
         "candidate_pass_at_1_plus",
         "public_test_discrimination_rate",
         "public_test_fallback_rate",
+        "generated_test_canonical_pass_rate",
+        "generated_test_parse_failure_rate",
+        "generated_test_entry_point_leak_rate",
+        "generated_test_fallback_rate",
+        "generated_test_discrimination_rate",
+        "generated_test_valid_tests_per_task",
+        "generated_test_tie_rate",
     ]
     numeric_keys.extend(
         key for key in optional_numeric_keys if all(key in summary for summary in seed_summaries)
@@ -187,6 +195,66 @@ def derive_metrics_from_candidate_results(records: list[dict], eval_results: dic
         for record in records
     ):
         metrics["public_test_fallback_rate"] = public_test_fallbacks / n_records
+    return metrics
+
+
+def derive_selection_audit_metrics(records: list[dict]) -> dict[str, float]:
+    """Aggregate strategy-specific audit metrics stored in raw selection metadata."""
+    if not records:
+        return {}
+
+    generated_records = []
+    for record in records:
+        metadata = record.get("strategy_selection_metadata", {}) or {}
+        if (
+            "generated_test_parse_method" in metadata
+            or "generated_test_fallback_used" in metadata
+            or metadata.get("selection_method") == "generated_test_pass_count"
+        ):
+            generated_records.append(metadata)
+
+    if not generated_records:
+        return {}
+
+    n_records = len(generated_records)
+    canonical_pass_rates = [
+        float(metadata["generated_test_canonical_pass_rate"])
+        for metadata in generated_records
+        if metadata.get("generated_test_canonical_pass_rate") is not None
+    ]
+    parse_failures = sum(
+        metadata.get("generated_test_parse_method") == "parse_error"
+        for metadata in generated_records
+    )
+    entry_point_leaks = sum(
+        bool(metadata.get("generated_test_entry_point_leak_detected"))
+        for metadata in generated_records
+    )
+    fallbacks = sum(
+        bool(metadata.get("generated_test_fallback_used"))
+        for metadata in generated_records
+    )
+    discriminative = sum(
+        bool(metadata.get("generated_test_discriminative"))
+        for metadata in generated_records
+    )
+    valid_tests_total = sum(
+        int(metadata.get("n_valid_generated_tests", 0)) for metadata in generated_records
+    )
+    ties = sum(bool(metadata.get("tie_breaker_used")) for metadata in generated_records)
+
+    metrics = {
+        "generated_test_parse_failure_rate": parse_failures / n_records,
+        "generated_test_entry_point_leak_rate": entry_point_leaks / n_records,
+        "generated_test_fallback_rate": fallbacks / n_records,
+        "generated_test_discrimination_rate": discriminative / n_records,
+        "generated_test_valid_tests_per_task": valid_tests_total / n_records,
+        "generated_test_tie_rate": ties / n_records,
+    }
+    if canonical_pass_rates:
+        metrics["generated_test_canonical_pass_rate"] = sum(canonical_pass_rates) / len(
+            canonical_pass_rates
+        )
     return metrics
 
 

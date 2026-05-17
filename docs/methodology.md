@@ -16,7 +16,8 @@ The current Week 2 strategy set is:
 - greedy
 - temperature single-selection baseline
 - best-of-N random-pick baseline
-- public-test selection
+- public-test selection baseline
+- generated-test selection
 
 Prompt formatting uses the model's Hugging Face chat template. This matters for Qwen2.5-Coder Instruct models and is expected to materially affect pass rates.
 
@@ -34,6 +35,8 @@ For multi-candidate strategies, TinyCodeScaling writes every candidate to the Ev
 - selected-solution pass@1 from the configured `selected_index`
 - oracle pass@N from whether any candidate passed the official tests
 
+The reporting layer now also supports an internal Pareto plot builder. It reads one or more saved summary files, projects each run into a cost-quality point, adds oracle companion points when those metrics exist, and renders a lightweight SVG for quick comparison.
+
 ## Token Accounting
 
 Each generation record stores:
@@ -45,3 +48,21 @@ Each generation record stores:
 - strategy metadata and candidate-level extraction outputs
 
 For batched vLLM inference, `latency_seconds` is total batch wall-clock divided by batch size. This is a reproducibility metric, not a deployment SLA metric.
+
+## Week 3
+
+Generated-test selection now follows this path:
+
+- generate `n_solutions` candidate solutions from the same solution prompt used by other strategies
+- generate one verifier block with a stricter prompt that asks for exactly one Python code block containing only top-level `assert` statements
+- extract valid assertions, rejecting outputs that redefine the benchmark entry point
+- run every candidate against the extracted assertions in the sandbox
+- select by generated-test pass count, breaking ties by cumulative logprob
+
+The run metadata also records:
+
+- full generated-test raw output
+- extracted assertions
+- pass matrix and pass counts
+- fallback reason when no valid verifier tests survive extraction
+- canonical pass rate for the generated tests when the benchmark exposes a canonical solution
