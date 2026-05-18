@@ -80,6 +80,8 @@ The CLI currently supports:
 
 All strategies now emit a common result schema with candidate-level metadata so later selection methods and oracle metrics can reuse the same raw artifacts.
 
+Sampling controls such as `top_p`, `top_k`, and `min_p` are configured on the strategy itself rather than modeled as separate strategy classes. This lets you compare, for example, best-of-8 top-p against best-of-8 Min-P on the same Pareto chart.
+
 Current selection semantics:
 
 - `greedy`: single deterministic sample

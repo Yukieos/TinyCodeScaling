@@ -1,0 +1,11 @@
+# Minimal best-of-8 Min-P smoke run for verifying modern sampling config plumbing.
+experiment_name: qwen15b_humaneval_bestof8_minp01_smoke
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus_smoke.yaml
+seeds: [11]
+strategy:
+  name: best_of_n_random
+  temperature: 0.8
+  n: 8
+  min_p: 0.1
+results_root: results

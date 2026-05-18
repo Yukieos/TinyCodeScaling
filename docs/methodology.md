@@ -21,6 +21,8 @@ The current Week 2 strategy set is:
 
 Prompt formatting uses the model's Hugging Face chat template. This matters for Qwen2.5-Coder Instruct models and is expected to materially affect pass rates.
 
+Sampling truncation is treated as a decoding configuration rather than a separate strategy family. The current code can pass through `top_p`, `top_k`, and `min_p`, which keeps comparisons like best-of-N top-p versus best-of-N Min-P inside one shared result schema.
+
 ## Evaluator Policy
 
 Correctness is delegated to benchmark-official tooling whenever possible.

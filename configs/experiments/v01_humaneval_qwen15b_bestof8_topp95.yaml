@@ -1,0 +1,11 @@
+# Full HumanEval+ run for the best-of-8 top-p sampling baseline.
+experiment_name: qwen15b_humaneval_bestof8_topp95_v01
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11, 12, 13]
+strategy:
+  name: best_of_n_random
+  temperature: 0.8
+  n: 8
+  top_p: 0.95
+results_root: results

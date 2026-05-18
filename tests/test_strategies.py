@@ -189,6 +189,45 @@ class BestOfNRandomTests(unittest.TestCase):
         self.assertEqual(result.total_completion_tokens, 10)
         self.assertEqual(result.selection_metadata["selection_baseline"], "best_of_n_random")
 
+    def test_best_of_n_random_passes_modern_sampling_kwargs_through_to_runner(self):
+        task = CodeTask(task_id="HumanEval/2", prompt="return x", entry_point="f")
+        runner = FakeRunner(
+            outputs=[
+                [
+                    GenerationResult(
+                        text="def f(x):\n    return x\n",
+                        prompt_tokens=14,
+                        completion_tokens=4,
+                        finish_reason="stop",
+                        latency_seconds=0.9,
+                        cumulative_logprob=-0.9,
+                    )
+                ]
+            ]
+        )
+
+        BestOfNRandomPick().run(
+            task=task,
+            prompt="prompt",
+            runner=runner,
+            formatter=None,
+            config=StrategyConfig.from_dict(
+                {
+                    "name": "best_of_n_random",
+                    "n": 1,
+                    "temperature": 0.8,
+                    "min_p": 0.1,
+                    "top_p": 0.95,
+                }
+            ),
+            benchmark_name="humaneval_plus",
+            extraction_backend="raw",
+            max_tokens=64,
+        )
+
+        self.assertEqual(runner.calls[0]["kwargs"]["min_p"], 0.1)
+        self.assertEqual(runner.calls[0]["kwargs"]["top_p"], 0.95)
+
 
 class PublicTestSelectionStrategyTests(unittest.TestCase):
     @patch("tinycodescaling.strategies.public_test_selection.count_passing_public_tests")

@@ -55,6 +55,7 @@ class TemperatureSamplingStrategy(Strategy):
             n=config.n,
             temperature=config.temperature,
             max_tokens=max_tokens,
+            sampling_kwargs=self._sampling_kwargs_from_config(config),
         )
         results: list[StrategyResult] = []
         for task, candidates in zip(tasks, candidate_batches):

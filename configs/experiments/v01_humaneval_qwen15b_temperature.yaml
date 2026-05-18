@@ -1,0 +1,10 @@
+# Full HumanEval+ run for temperature sampling with first-candidate selection.
+experiment_name: qwen15b_humaneval_temperature_v01
+model_config: configs/models/qwen25_coder_15b.yaml
+benchmark_config: configs/benchmarks/humaneval_plus.yaml
+seeds: [11, 12, 13]
+strategy:
+  name: temperature
+  temperature: 0.8
+  n: 4
+results_root: results

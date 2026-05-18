@@ -168,6 +168,7 @@ class Strategy(ABC):
         n: int,
         temperature: float,
         max_tokens: int,
+        sampling_kwargs: Mapping[str, Any] | None = None,
     ) -> list[list[CandidateSolution]]:
         """Generate and normalize candidate batches for one strategy invocation."""
         outputs = runner.generate(
@@ -175,6 +176,7 @@ class Strategy(ABC):
             n=max(n, 1),
             temperature=temperature,
             max_tokens=max_tokens,
+            **dict(sampling_kwargs or {}),
         )
         return [
             self._normalize_candidates(
@@ -185,6 +187,21 @@ class Strategy(ABC):
             )
             for task, samples in zip(tasks, outputs)
         ]
+
+    def _sampling_kwargs_from_config(
+        self,
+        config: StrategyConfig,
+        scope: str | None = None,
+    ) -> dict[str, Any]:
+        """Extract shared vLLM sampling options from a strategy config."""
+        sampling_kwargs: dict[str, Any] = {}
+        for key in ("top_p", "top_k", "min_p"):
+            scoped_key = f"{key}_{scope}" if scope else key
+            value = config.extra.get(scoped_key, config.extra.get(key))
+            if value is None:
+                continue
+            sampling_kwargs[key] = value
+        return sampling_kwargs
 
     def _build_result(
         self,

@@ -79,6 +79,7 @@ class GeneratedTestSelectionStrategy(Strategy):
             n=n_solutions,
             temperature=temperature_solutions,
             max_tokens=max_tokens,
+            sampling_kwargs=self._sampling_kwargs_from_config(config, scope="solutions"),
         )
         test_prompts = [
             _format_generated_test_prompt(task, formatter=formatter, n_tests=n_tests)
@@ -89,6 +90,7 @@ class GeneratedTestSelectionStrategy(Strategy):
             n=1,
             temperature=temperature_tests,
             max_tokens=test_max_tokens,
+            **self._sampling_kwargs_from_config(config, scope="tests"),
         )
 
         results: list[StrategyResult] = []

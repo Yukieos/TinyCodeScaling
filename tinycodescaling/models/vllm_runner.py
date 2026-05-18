@@ -58,13 +58,14 @@ class VLLMRunner:
         temperature: float = 0.0,
         top_p: float = 1.0,
         top_k: int = -1,
+        min_p: float | None = None,
         max_tokens: int = 512,
         stop: list[str] | None = None,
         seed: int | None = None,
     ) -> list[list[GenerationResult]]:
         """Generate one or more samples per prompt and normalize token accounting."""
         sampling_seed = self.seed if seed is None else seed
-        params = self._sampling_params_cls(
+        params_kwargs = dict(
             n=n,
             temperature=temperature,
             top_p=top_p,
@@ -72,6 +73,11 @@ class VLLMRunner:
             max_tokens=max_tokens,
             stop=stop,
             seed=sampling_seed,
+        )
+        if min_p is not None:
+            params_kwargs["min_p"] = min_p
+        params = self._sampling_params_cls(
+            **params_kwargs,
         )
 
         started_at = time.perf_counter()

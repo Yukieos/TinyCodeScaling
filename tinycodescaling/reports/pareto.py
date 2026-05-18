@@ -289,10 +289,18 @@ def _strategy_label(metadata: Mapping[str, Any]) -> str:
     strategy = str(metadata["strategy"])
     strategy_config = metadata.get("strategy_config", {})
     candidate_count = _candidate_count(metadata)
+    sampling_suffix = ""
+    if strategy_config.get("min_p") is not None:
+        sampling_suffix = f", min_p={strategy_config['min_p']}"
+    elif strategy_config.get("top_p") is not None:
+        sampling_suffix = f", top_p={strategy_config['top_p']}"
     if candidate_count and candidate_count > 1:
-        return f"{strategy} (n={candidate_count})"
+        return f"{strategy} (n={candidate_count}{sampling_suffix})"
     if strategy == "temperature":
-        return f"{strategy} (temp={strategy_config.get('temperature', 0.0)})"
+        return (
+            f"{strategy} (temp={strategy_config.get('temperature', 0.0)}"
+            f"{sampling_suffix})"
+        )
     return strategy
 
 
