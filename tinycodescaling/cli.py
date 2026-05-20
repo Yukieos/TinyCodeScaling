@@ -60,6 +60,10 @@ def main(argv: list[str] | None = None) -> None:
 
     run_parser = subparsers.add_parser("run", help="Run an experiment config.")
     run_parser.add_argument("--config", required=True, help="Path to an experiment YAML config.")
+    run_parser.add_argument(
+        "--model-config",
+        help="Optional model YAML override for this run only.",
+    )
 
     report_parser = subparsers.add_parser("report", help="Render a markdown report from a summary.")
     report_parser.add_argument("--summary", help="Path to a summary JSON file.")
@@ -139,7 +143,10 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     if args.command == "run":
-        run_experiment(Path(args.config))
+        run_experiment(
+            Path(args.config),
+            model_config_override=Path(args.model_config) if args.model_config else None,
+        )
         return
     if args.command == "report":
         render_report(summary_path=_resolve_summary_path(args))
@@ -165,10 +172,19 @@ def main(argv: list[str] | None = None) -> None:
         return
 
 
-def run_experiment(config_path: Path) -> None:
+def run_experiment(
+    config_path: Path,
+    model_config_override: Path | None = None,
+) -> None:
     """Run one configured benchmark experiment from generation through reporting."""
     experiment_config = _load_yaml(config_path)
-    model_config = _load_yaml(_resolve_config_path(config_path, experiment_config["model_config"]))
+    model_config = _load_yaml(
+        _resolve_model_config_path(
+            config_path=config_path,
+            experiment_config=experiment_config,
+            model_config_override=model_config_override,
+        )
+    )
     benchmark_config = _load_yaml(
         _resolve_config_path(config_path, experiment_config["benchmark_config"])
     )
@@ -476,6 +492,17 @@ def _build_strategy(name: str) -> Strategy:
     if name == "generated_test_selection":
         return GeneratedTestSelectionStrategy()
     raise ValueError(f"Unsupported strategy: {name}")
+
+
+def _resolve_model_config_path(
+    config_path: Path,
+    experiment_config: dict,
+    model_config_override: Path | None,
+) -> Path:
+    """Resolve the model config path, allowing a per-run CLI override."""
+    if model_config_override is not None:
+        return _resolve_config_path(config_path, str(model_config_override))
+    return _resolve_config_path(config_path, experiment_config["model_config"])
 
 
 def _load_jsonl(path: Path) -> list[dict]:

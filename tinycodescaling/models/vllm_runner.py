@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass
 
@@ -42,14 +43,17 @@ class VLLMRunner:
         self.model_name = model_name
         self.seed = seed
         self._sampling_params_cls = _load_sampling_params_cls()
-        self.llm = LLM(
-            model=model_name,
-            dtype=dtype,
-            max_model_len=max_model_len,
-            gpu_memory_utilization=gpu_memory_utilization,
-            seed=seed,
-            revision=revision,
-        )
+        try:
+            self.llm = LLM(
+                model=model_name,
+                dtype=dtype,
+                max_model_len=max_model_len,
+                gpu_memory_utilization=gpu_memory_utilization,
+                seed=seed,
+                revision=revision,
+            )
+        except ValueError as exc:
+            raise RuntimeError(_format_vllm_startup_error(exc, gpu_memory_utilization)) from exc
 
     def generate(
         self,
@@ -110,3 +114,37 @@ def _load_sampling_params_cls():
     from vllm import SamplingParams
 
     return SamplingParams
+
+
+def _format_vllm_startup_error(exc: ValueError, gpu_memory_utilization: float) -> str:
+    """Rewrite common vLLM startup failures into a more actionable message."""
+    message = str(exc)
+    if "Free memory on device" not in message or "GPU memory utilization" not in message:
+        return message
+
+    recommended_utilization = _suggest_gpu_memory_utilization(message)
+    guidance = (
+        "vLLM could not start because the configured `gpu_memory_utilization` is higher than "
+        "the free memory currently available on the GPU. "
+        f"Configured value: {gpu_memory_utilization}."
+    )
+    if recommended_utilization is not None:
+        guidance += (
+            f" Try a value at or below {recommended_utilization:.2f} and consider lowering "
+            "`batch_size` as well."
+        )
+    else:
+        guidance += " Lower `gpu_memory_utilization` and consider lowering `batch_size` as well."
+    return f"{guidance}\nOriginal vLLM error: {message}"
+
+
+def _suggest_gpu_memory_utilization(message: str) -> float | None:
+    """Estimate a safe utilization upper bound from a vLLM free-memory error string."""
+    match = re.search(r"Free memory on device .* \(([\d.]+)/([\d.]+) GiB\)", message)
+    if not match:
+        return None
+    free_gib = float(match.group(1))
+    total_gib = float(match.group(2))
+    if total_gib <= 0:
+        return None
+    return max(0.1, min(0.95, free_gib / total_gib * 0.95))

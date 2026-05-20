@@ -1,0 +1,12 @@
+# Safer vLLM settings for shared or partially occupied 48 GB GPUs.
+# This keeps the same model but lowers the KV-cache reservation target
+# so runs can still start when only ~25-30 GiB is free.
+model_name: Qwen/Qwen2.5-Coder-1.5B-Instruct
+backend: vllm
+dtype: bfloat16
+max_new_tokens: 512
+max_model_len: 4096
+gpu_memory_utilization: 0.5
+batch_size: 8
+system_prompt: You are a helpful coding assistant.
+use_chat_template: true
