@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tinycodescaling.cli import _resolve_model_config_path
+from tinycodescaling.cli import _resolve_model_config_path, _resolve_seed_override
 from tinycodescaling.models.vllm_runner import (
     _format_vllm_startup_error,
     _suggest_gpu_memory_utilization,
@@ -54,6 +54,13 @@ class RunnerConfigTests(unittest.TestCase):
             )
 
             self.assertEqual(resolved, override_path)
+
+    def test_resolve_seed_override_uses_configured_seeds_by_default(self):
+        self.assertEqual(_resolve_seed_override([11, 12, 13], None), [11, 12, 13])
+
+    def test_resolve_seed_override_parses_comma_separated_values(self):
+        self.assertEqual(_resolve_seed_override([11, 12, 13], "11"), [11])
+        self.assertEqual(_resolve_seed_override([11, 12, 13], "11, 15"), [11, 15])
 
 
 if __name__ == "__main__":

@@ -64,6 +64,10 @@ def main(argv: list[str] | None = None) -> None:
         "--model-config",
         help="Optional model YAML override for this run only.",
     )
+    run_parser.add_argument(
+        "--seeds",
+        help="Optional comma-separated seed override, for example `11` or `11,12,13`.",
+    )
 
     report_parser = subparsers.add_parser("report", help="Render a markdown report from a summary.")
     report_parser.add_argument("--summary", help="Path to a summary JSON file.")
@@ -146,6 +150,7 @@ def main(argv: list[str] | None = None) -> None:
         run_experiment(
             Path(args.config),
             model_config_override=Path(args.model_config) if args.model_config else None,
+            seeds_override=args.seeds,
         )
         return
     if args.command == "report":
@@ -175,6 +180,7 @@ def main(argv: list[str] | None = None) -> None:
 def run_experiment(
     config_path: Path,
     model_config_override: Path | None = None,
+    seeds_override: str | None = None,
 ) -> None:
     """Run one configured benchmark experiment from generation through reporting."""
     experiment_config = _load_yaml(config_path)
@@ -191,7 +197,7 @@ def run_experiment(
     strategy_config = StrategyConfig.from_dict(experiment_config["strategy"])
     strategy = _build_strategy(strategy_config.name)
 
-    seeds = list(experiment_config["seeds"])
+    seeds = _resolve_seed_override(experiment_config["seeds"], seeds_override)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_id = f"{experiment_config['experiment_name']}_{timestamp}"
     results_root = _resolve_results_root(experiment_config.get("results_root", "results"))
@@ -503,6 +509,21 @@ def _resolve_model_config_path(
     if model_config_override is not None:
         return _resolve_config_path(config_path, str(model_config_override))
     return _resolve_config_path(config_path, experiment_config["model_config"])
+
+
+def _resolve_seed_override(configured_seeds: list[int], seeds_override: str | None) -> list[int]:
+    """Return configured seeds unless a CLI override was provided."""
+    if not seeds_override:
+        return list(configured_seeds)
+    seeds: list[int] = []
+    for part in seeds_override.split(","):
+        token = part.strip()
+        if not token:
+            continue
+        seeds.append(int(token))
+    if not seeds:
+        raise ValueError("Seed override must include at least one integer seed.")
+    return seeds
 
 
 def _load_jsonl(path: Path) -> list[dict]:
