@@ -42,20 +42,24 @@ def run_in_sandbox(
             error_message="blocked likely memory-exhausting expression before execution.",
         )
     context = multiprocessing.get_context("spawn")
-    queue = context.Queue()
+    parent_conn, child_conn = context.Pipe(duplex=False)
     process = context.Process(
         target=_sandbox_code_worker,
-        args=(queue, code, test_code, maximum_memory_bytes),
+        args=(child_conn, code, test_code, maximum_memory_bytes),
     )
     process.start()
+    child_conn.close()
+    timed_out = False
     process.join(timeout_seconds + 1.0)
     if process.is_alive():
+        timed_out = True
         process.terminate()
         process.join(0.1)
     if process.is_alive():
+        timed_out = True
         process.kill()
         process.join(0.1)
-    if process.is_alive() or process.exitcode is None:
+    if timed_out or process.is_alive() or process.exitcode is None:
         return SandboxResult(
             passed=False,
             status="timeout",
@@ -63,7 +67,8 @@ def run_in_sandbox(
             error_message=f"Timed out after {timeout_seconds} seconds.",
         )
 
-    if process.exitcode != 0 and queue.empty():
+    if process.exitcode != 0 and not parent_conn.poll():
+        parent_conn.close()
         return SandboxResult(
             passed=False,
             status="runtime_error",
@@ -71,14 +76,16 @@ def run_in_sandbox(
             error_message=f"Sandbox subprocess exited with code {process.exitcode}.",
         )
 
-    result = queue.get()
-    if result.get("status") == "running":
+    if not parent_conn.poll():
+        parent_conn.close()
         return SandboxResult(
             passed=False,
-            status="timeout",
-            error_type="TimeoutError",
-            error_message=f"Timed out after {timeout_seconds} seconds.",
+            status="runtime_error",
+            error_type="MissingResultError",
+            error_message="Sandbox subprocess exited without returning a result.",
         )
+    result = parent_conn.recv()
+    parent_conn.close()
     return SandboxResult(**result)
 
 
@@ -91,11 +98,11 @@ def run_test_cases_in_sandbox(
 ) -> SandboxResult:
     """Execute expression-based public tests and return per-case pass/fail booleans."""
     context = multiprocessing.get_context("spawn")
-    queue = context.Queue()
+    parent_conn, child_conn = context.Pipe(duplex=False)
     process = context.Process(
         target=_sandbox_test_case_worker,
         args=(
-            queue,
+            child_conn,
             code,
             list(test_cases),
             per_test_timeout_seconds,
@@ -103,14 +110,18 @@ def run_test_cases_in_sandbox(
         ),
     )
     process.start()
+    child_conn.close()
+    timed_out = False
     process.join(timeout_seconds + 1.0)
     if process.is_alive():
+        timed_out = True
         process.terminate()
         process.join(0.1)
     if process.is_alive():
+        timed_out = True
         process.kill()
         process.join(0.1)
-    if process.is_alive() or process.exitcode is None:
+    if timed_out or process.is_alive() or process.exitcode is None:
         return SandboxResult(
             passed=False,
             status="timeout",
@@ -119,7 +130,8 @@ def run_test_cases_in_sandbox(
             details={"case_results": [False for _ in test_cases]},
         )
 
-    if process.exitcode != 0 and queue.empty():
+    if process.exitcode != 0 and not parent_conn.poll():
+        parent_conn.close()
         return SandboxResult(
             passed=False,
             status="runtime_error",
@@ -128,7 +140,17 @@ def run_test_cases_in_sandbox(
             details={"case_results": [False for _ in test_cases]},
         )
 
-    result = queue.get()
+    if not parent_conn.poll():
+        parent_conn.close()
+        return SandboxResult(
+            passed=False,
+            status="runtime_error",
+            error_type="MissingResultError",
+            error_message="Sandbox subprocess exited without returning a result.",
+            details={"case_results": [False for _ in test_cases]},
+        )
+    result = parent_conn.recv()
+    parent_conn.close()
     return SandboxResult(**result)
 
 
@@ -150,11 +172,11 @@ def run_assertions_in_sandbox(
         )
 
     context = multiprocessing.get_context("spawn")
-    queue = context.Queue()
+    parent_conn, child_conn = context.Pipe(duplex=False)
     process = context.Process(
         target=_sandbox_assertion_worker,
         args=(
-            queue,
+            child_conn,
             code,
             list(assertions),
             per_assertion_timeout_seconds,
@@ -162,14 +184,18 @@ def run_assertions_in_sandbox(
         ),
     )
     process.start()
+    child_conn.close()
+    timed_out = False
     process.join(timeout_seconds + 1.0)
     if process.is_alive():
+        timed_out = True
         process.terminate()
         process.join(0.1)
     if process.is_alive():
+        timed_out = True
         process.kill()
         process.join(0.1)
-    if process.is_alive() or process.exitcode is None:
+    if timed_out or process.is_alive() or process.exitcode is None:
         return SandboxResult(
             passed=False,
             status="timeout",
@@ -178,7 +204,8 @@ def run_assertions_in_sandbox(
             details={"assertion_results": [False for _ in assertions]},
         )
 
-    if process.exitcode != 0 and queue.empty():
+    if process.exitcode != 0 and not parent_conn.poll():
+        parent_conn.close()
         return SandboxResult(
             passed=False,
             status="runtime_error",
@@ -187,19 +214,28 @@ def run_assertions_in_sandbox(
             details={"assertion_results": [False for _ in assertions]},
         )
 
-    result = queue.get()
+    if not parent_conn.poll():
+        parent_conn.close()
+        return SandboxResult(
+            passed=False,
+            status="runtime_error",
+            error_type="MissingResultError",
+            error_message="Sandbox subprocess exited without returning a result.",
+            details={"assertion_results": [False for _ in assertions]},
+        )
+    result = parent_conn.recv()
+    parent_conn.close()
     return SandboxResult(**result)
 
 
 def _sandbox_code_worker(
-    queue: multiprocessing.Queue,
+    result_conn,
     code: str,
     test_code: str,
     maximum_memory_bytes: int | None,
 ) -> None:
     """Run code and test code in an isolated subprocess and emit a structured result."""
     create_tempdir, _, swallow_io, _ = _load_evalplus_sandbox_utils()
-    queue.put({"passed": False, "status": "running"})
     with create_tempdir():
         import os
         import shutil
@@ -214,19 +250,18 @@ def _sandbox_code_worker(
                 exec(code, exec_globals)
                 exec(test_code, exec_globals)
         except BaseException as exc:  # noqa: BLE001
-            queue.get_nowait()
-            queue.put(_exception_to_result(exc))
+            result_conn.send(_exception_to_result(exc))
         else:
-            queue.get_nowait()
-            queue.put({"passed": True, "status": "pass", "details": {}})
+            result_conn.send({"passed": True, "status": "pass", "details": {}})
         finally:
+            result_conn.close()
             shutil.rmtree = rmtree
             os.rmdir = rmdir
             os.chdir = chdir
 
 
 def _sandbox_test_case_worker(
-    queue: multiprocessing.Queue,
+    result_conn,
     code: str,
     test_cases: list[dict[str, str]],
     per_test_timeout_seconds: float,
@@ -259,14 +294,14 @@ def _sandbox_test_case_worker(
                 except BaseException:  # noqa: BLE001
                     case_results.append(False)
         except BaseException as exc:  # noqa: BLE001
-            queue.put(
+            result_conn.send(
                 {
                     **_exception_to_result(exc),
                     "details": {"case_results": [False for _ in test_cases]},
                 }
             )
         else:
-            queue.put(
+            result_conn.send(
                 {
                     "passed": all(case_results),
                     "status": "pass" if all(case_results) else "fail",
@@ -274,13 +309,14 @@ def _sandbox_test_case_worker(
                 }
             )
         finally:
+            result_conn.close()
             shutil.rmtree = rmtree
             os.rmdir = rmdir
             os.chdir = chdir
 
 
 def _sandbox_assertion_worker(
-    queue: multiprocessing.Queue,
+    result_conn,
     code: str,
     assertions: list[str],
     per_assertion_timeout_seconds: float,
@@ -310,14 +346,14 @@ def _sandbox_assertion_worker(
                 except BaseException:  # noqa: BLE001
                     assertion_results.append(False)
         except BaseException as exc:  # noqa: BLE001
-            queue.put(
+            result_conn.send(
                 {
                     **_exception_to_result(exc),
                     "details": {"assertion_results": [False for _ in assertions]},
                 }
             )
         else:
-            queue.put(
+            result_conn.send(
                 {
                     "passed": all(assertion_results),
                     "status": "pass" if all(assertion_results) else "fail",
@@ -325,6 +361,7 @@ def _sandbox_assertion_worker(
                 }
             )
         finally:
+            result_conn.close()
             shutil.rmtree = rmtree
             os.rmdir = rmdir
             os.chdir = chdir
