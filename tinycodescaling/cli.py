@@ -23,6 +23,12 @@ from tinycodescaling.metrics.aggregate import (
 )
 from tinycodescaling.models.tokenizer_utils import ChatPromptFormatter
 from tinycodescaling.models.vllm_runner import VLLMRunner
+from tinycodescaling.reports.failure_analysis import (
+    analyze_failures,
+    build_failure_report_markdown,
+    infer_summary_path,
+    write_failure_artifacts,
+)
 from tinycodescaling.reports.markdown import build_markdown_report
 from tinycodescaling.reports.pareto import (
     build_pareto_dataset,
@@ -101,6 +107,36 @@ def main(argv: list[str] | None = None) -> None:
         help="Use a linear x-axis instead of the default log scale.",
     )
 
+    failures_parser = subparsers.add_parser(
+        "failures",
+        help="Analyze raw task records into failure buckets and examples.",
+    )
+    failures_parser.add_argument(
+        "--results",
+        required=True,
+        help="Path to one raw JSONL results file produced by `tinycodescaling run`.",
+    )
+    failures_parser.add_argument(
+        "--summary",
+        help="Optional matching summary JSON path. Inferred automatically when omitted.",
+    )
+    failures_parser.add_argument(
+        "--output",
+        help="Optional markdown output path. A companion JSON file is written next to it.",
+    )
+    failures_parser.add_argument(
+        "--target-status",
+        default="plus",
+        choices=["base", "plus"],
+        help="Which official status to treat as the solved criterion.",
+    )
+    failures_parser.add_argument(
+        "--examples",
+        type=int,
+        default=8,
+        help="Maximum number of example records to keep per failure bucket.",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "run":
         run_experiment(Path(args.config))
@@ -116,6 +152,15 @@ def main(argv: list[str] | None = None) -> None:
             x_metric=args.x_metric,
             y_metric=args.y_metric,
             log_scale_x=not args.linear_x,
+        )
+        return
+    if args.command == "failures":
+        render_failure_analysis(
+            raw_results_path=Path(args.results),
+            summary_path=Path(args.summary) if args.summary else None,
+            output_path=Path(args.output) if args.output else None,
+            target_status=args.target_status,
+            example_limit=args.examples,
         )
         return
 
@@ -254,6 +299,38 @@ def render_pareto(
     )
     print(f"Pareto plot: {svg_path}")
     print(f"Pareto dataset: {dataset_path}")
+
+
+def render_failure_analysis(
+    raw_results_path: Path,
+    summary_path: Path | None,
+    output_path: Path | None,
+    target_status: str,
+    example_limit: int,
+) -> None:
+    """Load raw records, derive failure buckets, and print or write the report."""
+    records = _load_jsonl(raw_results_path)
+    if summary_path is None:
+        summary_path = infer_summary_path(raw_results_path)
+    summary = None
+    if summary_path is not None and summary_path.exists():
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+
+    analysis = analyze_failures(
+        records=records,
+        summary=summary,
+        target_status=target_status,
+        example_limit=example_limit,
+    )
+    report_text = build_failure_report_markdown(analysis)
+    if output_path is None:
+        print(report_text)
+        return
+
+    markdown_path, json_path = write_failure_artifacts(analysis, output_path=output_path)
+    print(report_text)
+    print(f"Failure report: {markdown_path}")
+    print(f"Failure dataset: {json_path}")
 
 
 def _run_seed(
@@ -399,6 +476,18 @@ def _build_strategy(name: str) -> Strategy:
     if name == "generated_test_selection":
         return GeneratedTestSelectionStrategy()
     raise ValueError(f"Unsupported strategy: {name}")
+
+
+def _load_jsonl(path: Path) -> list[dict]:
+    """Load one JSONL file into a list of dictionaries."""
+    records: list[dict] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+    return records
 
 
 def _cuda_version() -> str | None:
